@@ -1,9 +1,11 @@
 import math
+import pandas as pd
 from collections import defaultdict
 
 
 class NewWordDiscovery:
     def __init__(self, data_path):
+        self.data_name = data_path
         self.max_length = 5
         self.words_count = defaultdict(int)
         self.left_neighbor = defaultdict(dict)
@@ -13,11 +15,13 @@ class NewWordDiscovery:
         self.left_entropy = {}
         self.right_entropy = {}
         self.word_score = {}
+        self.scores_sort = ()
 
-        self.load_data(data_path)
+        self.load_data('./data/' + self.data_name)
         self.calc_ami()
         self.calc_entropy()
         self.calc_word_score()
+        self.export_csv()
 
     def ngram(self, line, length):
         for i in range(len(line) - length + 1):
@@ -52,25 +56,41 @@ class NewWordDiscovery:
     def calc_entropy(self):
         for word, neighbor_dic in self.left_neighbor.items():
             total = sum(neighbor_dic.values())
-            entropy = sum([-(char_count / total) * math.log(char_count / total, 2) for char_count in neighbor_dic.values()])
+            entropy = sum(
+                [-(char_count / total) * math.log(char_count / total, 2) for char_count in neighbor_dic.values()])
             self.left_entropy[word] = entropy
         for word, neighbor_dic in self.right_neighbor.items():
             total = sum(neighbor_dic.values())
-            entropy = sum([-(char_count / total) * math.log(char_count / total, 2) for char_count in neighbor_dic.values()])
+            entropy = sum(
+                [-(char_count / total) * math.log(char_count / total, 2) for char_count in neighbor_dic.values()])
             self.right_entropy[word] = entropy
 
     def calc_word_score(self):
         for word in self.ami:
+            if len(word) == 1:  # 如果是单个字不做分词发现计算
+                continue
             ami = self.ami.get(word, 1e-3)
             le = self.left_entropy.get(word, 1e-3)
             re = self.right_entropy.get(word, 1e-3)
             self.word_score[word] = ami * max(le, re)
+        self.scores_sort = sorted([(word, count) for word, count in self.word_score.items()],
+                                  key=lambda x: x[1],
+                                  reverse=True)
+
+    def export_csv(self):
+        content = []
+        for length in range(2, 5):
+            for word, score in [(word, score) for word, score in self.scores_sort if len(word) == length][:10]:
+                content.append([word,
+                                score,
+                                self.ami.get(word, 1e-3),
+                                self.left_entropy.get(word, 1e-3),
+                                self.right_entropy.get(word, 1e-3)])
+        column = ['新词', '权重', '互信息', '左熵', '右熵']
+        test = pd.DataFrame(columns=column, data=content)
+        test.to_csv('./output/' + self.data_name.split('.')[0] + '.csv', encoding='utf-8_sig')  # 有BOM的utf8编码
 
 
 if __name__ == '__main__':
-    obj = NewWordDiscovery('./data/tianchi_match.csv')
-    scores_sort = sorted([(word, count) for word, count in obj.word_score.items()], key=lambda x: x[1], reverse=True)
-    print([x for x, c in scores_sort if len(x) == 1][:10])
-    print([x for x, c in scores_sort if len(x) == 2][:10])
-    print([x for x, c in scores_sort if len(x) == 3][:10])
-    print([x for x, c in scores_sort if len(x) == 4][:10])
+    data_name = 'zhihu_info.txt'
+    obj = NewWordDiscovery(data_name)
